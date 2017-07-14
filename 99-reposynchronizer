@@ -1,0 +1,51 @@
+#!/bin/bash
+# install the script to /etc/NetworkManager/dispatch.d 
+
+# based on: http://blog.kagesenshi.org/2007/06/fedora-repository-mirroring-script.html
+
+# Use the UUID of the network connection that can connect to upstream repositories to be synced
+
+SYNC_UUID="6ad5da52-3d12-4146-854a-2428a388c5d9" 
+
+# mirror root - the place you want the rpms to be downloaded
+MROOT="/var/www/html"
+
+# processor architectures (space separated)
+ARCHS="x86_64"
+
+# repository names (space separated)
+REPOS="fedora updates"
+
+downrepo () {
+    cd $MROOT
+    echo "Sychronizing Repositories"
+    dnf --repo $1 reposync  
+    STAT=$?
+    if [ "$STAT" == "0" ];then
+        cd $1
+        echo "Cleaning old packages"
+	# dont delete old kernels
+        repomanage --old . | grep -v 'kernel\-' | xargs rm -rf
+        echo "Recreating repodata"
+	if [ -f comps.xml ]; then
+		echo "comps.xml found"
+        	createrepo --workers 2 -g comps.xml .
+	else 
+		echo "comps.xml not found, creating without groups"
+        	createrepo .
+	fi
+	
+	if [ -f *-updateinfo.xml.gz ]; then
+		zcat *-updateinfo.xml.gz > updateinfo.xml
+		modifyrepo updateinfo.xml ./repodata/	
+		rm *-updateinfo.xml.gz
+	fi
+    fi
+    cd $MROOT
+}
+
+if [ "$CONNECTION_UUID" = "$SYNC_UUID" ]; then
+	for REPO in $REPOS; do
+		downrepo $REPO $ARCH
+	done
+fi
